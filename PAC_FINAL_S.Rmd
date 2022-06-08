@@ -1,0 +1,209 @@
+---
+title: "PAC_FINAL"
+author: "Zeeshan"
+date: "4/30/2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+#REQUIRED PACKAGES
+```{r}
+library(imputeTS)
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(skimr)
+library(rpart)
+library(caret)
+library(xgboost)
+library(randomForest)
+library(lattice)
+names(df)
+```
+
+
+#DATA LOADING
+```{r}
+df = read_csv("/Users/zee/Documents/PACE ACADEMICS/Spring 2022/Predictive Analytics/predictrentlala2022/analysisData.csv")
+scoringdata=read_csv("/Users/zee/Documents/PACE ACADEMICS/Spring 2022/Predictive Analytics/predictrentlala2022/scoringData.csv")
+data_n = df
+```
+
+
+```{r}
+dim(data_n)
+```
+```{r}
+skimr::skim(data_n)
+```
+
+#DATA EXPLORTION
+```{r}
+ggplot(df,aes(x=room_type,fill=room_type))+geom_bar(color="black")+
+  labs(title = "Types of Rooms at AIRBNB", x= "Type of Rooms", y = "Count")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+ggplot(df,aes(x=mean(price),y=neighbourhood_group_cleansed,fill=room_type)) + geom_bar(stat='identity') +  
+  labs(title = "Avg Price within NYC for respective Room type", x= "Price", y = "Neighbourhood")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+ggplot(df,aes(x=accommodates,y=price,color=neighbourhood_group_cleansed)) + geom_point() + geom_smooth()+
+  facet_wrap(~neighbourhood_group_cleansed)+
+  labs(title = "Price Vs Accomodates in Respective Counties", x= "Accommodates", y = "Price")+scale_x_continuous()+
+  scale_y_continuous() + theme(plot.title = element_text(hjust = 0.7))
+```
+
+```{r}
+ggplot(df,aes(x=price,y=availability_30))+geom_point(color="yellow",
+        fill="#fd90c8",
+        shape=23,
+        alpha=0.7,
+        size=3,
+        stroke = 1, aes(text = paste("Price:", price, "<br>",
+                     "Availability:", availability_30)))+
+  geom_smooth()+
+  scale_y_continuous(limits = c(0,40))+
+  scale_x_continuous()+
+  labs(title = "Price and Availability in month", x= "Price", y = "Availability")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+```
+DATA CLEANING !!!
+
+#Removal of Character features for Model Building!!
+```{r}
+a = sapply(data_n,is.character) %>% which(data_n==TRUE)    #'*SAPPLY FUNCTION FOR INCLUDING ALL CHARACTER VARIABLES FOR REMOVAL*
+data_n = subset(data_n, select =-c(a))
+data_n = subset(data_n, select =-c(first_review,last_review))     
+data_n= subset(data_n,select=-c(license,jurisdiction_names))
+data_n= subset(data_n,select=-c(weekly_price,monthly_price))
+data_n= subset(data_n,select=-c(square_feet))
+data_n = subset(data_n,select= -c(host_since))
+skim(data_n)
+```
+
+#TRANFORMING DATA INTO 0 AND 1 FOR THE LOGICAL VARAIBLE
+```{r}
+data_n$is_location_exact=as.integer(data_n$is_location_exact)
+data_n$host_identity_verified = as.integer(data_n$host_identity_verified)
+data_n$is_business_travel_ready = as.integer(data_n$is_business_travel_ready)
+data_n$instant_bookable = as.integer(data_n$instant_bookable)
+data_n$host_has_profile_pic = as.integer(data_n$host_has_profile_pic)
+data_n$host_is_superhost = as.integer(data_n$host_is_superhost)
+data_n$has_availability = as.integer(data_n$has_availability)
+data_n$requires_license = as.integer(data_n$requires_license)
+data_n$require_guest_profile_picture = as.integer(data_n$require_guest_profile_picture)
+data_n$require_guest_phone_verification = as.integer(data_n$require_guest_phone_verification)
+skim(data_n)
+```
+#Imputation of mean on the missing values!
+
+```{r}
+data_n = na_mean(data_n)  #use of Package ImputeTS 
+skim(data_n)
+```
+
+```
+
+
+
+SPLITING DATA 
+```{r}
+library(caret)
+set.seed(1031)
+split = createDataPartition(y = data_n$price, p = 0.75, list = F, groups = 100)
+train = data_n[split,]
+test =  data_n[-split,]
+```
+
+FEATURE SELECTION!
+```{r}
+start_mod = lm(price~1,data=train)
+empty_mod = lm(price~1,data=train)
+full_mod = lm(price~.,data=train)
+hybridStepwise2 = step(start_mod,
+                      scope=list(upper=full_mod,lower=empty_mod),
+                      direction='both')
+
+#TRAIN DATA FEATURE SELECTION
+train = subset(train,select = c(accommodates,cleaning_fee,review_scores_location,bathrooms,availability_30,availability_90,  calculated_host_listings_count_entire_homes,number_of_reviews_ltm,review_scores_value,calculated_host_listings_count,bedrooms,review_scores_rating,              minimum_minimum_nights,security_deposit,calculated_host_listings_count_shared_rooms,guests_included,review_scores_checkin,beds,                          host_listings_count,review_scores_cleanliness,maximum_minimum_nights,reviews_per_month,extra_people,availability_365,review_scores_accuracy                     ,host_identity_verified,availability_60,require_guest_phone_verification,number_of_reviews,minimum_nights,minimum_nights_avg_ntm,price))
+
+
+#TEST DATA FEATURE SELECTION
+sd_2 = subset(scoringdata,select = c(accommodates,cleaning_fee,review_scores_location,bathrooms,availability_30,availability_90,  calculated_host_listings_count_entire_homes,number_of_reviews_ltm,review_scores_value,calculated_host_listings_count,bedrooms,review_scores_rating,              minimum_minimum_nights,security_deposit,calculated_host_listings_count_shared_rooms,guests_included,review_scores_checkin,beds,                          host_listings_count,review_scores_cleanliness,maximum_minimum_nights,reviews_per_month,extra_people,availability_365,review_scores_accuracy                     ,host_identity_verified,availability_60,require_guest_phone_verification,number_of_reviews,minimum_nights,minimum_nights_avg_ntm))
+```
+
+
+```{r}
+#TEST DATA IMPUTATION
+scoringdata$host_is_superhost [is.na(scoringdata$host_is_superhost )]<-mean(scoringdata$host_is_superhost , na.rm = T)
+scoringdata$host_total_listings_count[is.na(scoringdata$host_total_listings_count )]<-mean(scoringdata$host_total_listings_count , na.rm = T)
+scoringdata$host_listings_count[is.na(scoringdata$host_listings_count )]<-mean(scoringdata$host_listings_count , na.rm = T)
+scoringdata$security_deposit[is.na(scoringdata$security_deposit )]<-mean(scoringdata$security_deposit , na.rm = T)
+scoringdata$cleaning_fee[is.na(scoringdata$cleaning_fee )]<-mean(scoringdata$cleaning_fee, na.rm = T)
+scoringdata$beds[is.na(scoringdata$beds)]<-mean(scoringdata$beds, na.rm = T)
+scoringdata$host_identity_verified[is.na(scoringdata$host_identity_verified )]<-mean(scoringdata$host_identity_verified, na.rm = T)
+scoringdata$host_has_profile_pic[is.na(scoringdata$host_has_profile_pic )]<-mean(scoringdata$host_has_profile_pic, na.rm = T)
+```
+
+
+
+Model1 (Linear Regression)
+```{r}
+model1 = lm(price~bedrooms+bathrooms+beds+accommodates+guests_included+cleaning_fee+calculated_host_listings_count_entire_homes+calculated_host_listings_count_entire_homes+security_deposit,data=train)
+```
+
+Model 2 (Linear Regression)
+```{r}
+model2 = lm(price~.,data=train)
+```
+ 
+Model 3 (XGBOOST)
+
+```{r}
+
+library(xgboost)
+library(vtreat)
+set.seed(1031)
+trt = designTreatmentsZ(dframe = train,varlist = names(train)[1:31])
+names(train)[1:31]
+newvars = trt$scoreFrame[trt$scoreFrame$code %in% c('clean','lev'),'varName']
+train_input = prepare(treatmentplan = trt, 
+                      dframe = train,
+                      varRestriction = newvars)
+test_input = prepare(treatmentplan = trt, 
+                     dframe = scoringdata,
+                     varRestriction = newvars)
+library(xgboost)
+xgboost = xgboost(data=as.matrix(train_input), 
+                  label = train$price,
+                  nrounds=57,
+                  verbose = 0)
+
+set.seed(1031)
+tune_nrounds = xgb.cv(data =as.matrix(train_input), 
+                      label = train$price,
+                      nrounds=250,
+                      nfold = 10,
+                      verbose = 0)
+ggplot(data=tune_nrounds$evaluation_log, aes(x=iter, y=test_rmse_mean))+
+  geom_point(size=0.4, color='sienna')+
+  geom_line(size=0.1, alpha=0.1)+
+  theme_bw()
+which.min(tune_nrounds$evaluation_log$test_rmse_mean)
+
+
+```
+Prediction
+```{r}
+pred = predict(xgboost,newdata=as.matrix(sd_2))
+df = data.frame(id=scoringdata$id,price=pred)
+write.csv(df,'submission045.csv',row.names=F)
+```
+
